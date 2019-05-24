@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html>
+
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>test</title>
+</head>
+
+<body>
+    <img src="test.png" alt="img source" id="imgSource">
+    <canvas id="canvas"></canvas>
+    <script>
+        window.onload = function() {
+                var img = document.getElementById("imgSource"),
+                    canvas = document.getElementById('canvas'),
+                    width = img.width,
+                    height = img.height;
+
+                // console.log(width);
+
+                canvas.width = width;
+                canvas.height = height;
+
+                var context = canvas.getContext("2d");
+                context.drawImage(img, 0, 0);
+
+                var canvasData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+                //console.log(canvasData);
+
+                // 开始
+                var startTime = +new Date();
+                var tempData = BBcolor(canvasData, 10, 1, 300);
+                // var tempData = removeColor(canvasData);
+
+
+                context.putImageData(tempData, 0, 0);
+
+                var endTime = +new Date();
+                console.log(" 一共经历时间：" + (endTime - startTime) + "ms");
+            }
+            /**
+             * 双边滤波
+             */
+        function BBcolor(imgData, radius, sigma, sigma_color, channels) {
+            var pixes = imgData.data,
+                width = imgData.width,
+                height = imgData.height,
+                color_weight = [],
+                channels = channels || 3,
+                sigma_color = sigma_color || (radius / 3),
+                coeff_color = -1 / (2 * sigma_color * sigma_color),
+                radius = radius || 5;
+
+            sigma = sigma || (radius / 3);
+
+
+            var gaussEdge = radius * 2 + 1; // 高斯矩阵的边长
+            for (var i = 0; i < channels * 256; i++) {
+                color_weight[i] = Math.exp(i * i * coeff_color);
+            }
+            var gaussMatrix = [],
+                gaussSum = 0,
+                a = 1 / (2 * sigma * sigma * Math.PI),
+                b = -a * Math.PI;
+
+            for (var i = -radius; i <= radius; i++) {
+                for (var j = -radius; j <= radius; j++) {
+                    var gxy = a * Math.exp((i * i + j * j) * b);
+                    gaussMatrix.push(gxy);
+                    gaussSum += gxy; // 得到高斯矩阵的和，用来归一化
+                }
+            }
+            var gaussNum = (radius + 1) * (radius + 1);
+            for (var i = 0; i < gaussNum; i++) {
+                gaussMatrix[i] = gaussMatrix[i] / gaussSum; // 除gaussSum是归一化
+            }
+
+            //console.log(gaussMatrix);
+            // 循环计算整个图像每个像素高斯处理之后的值
+            for (var x = 0; x < width; x++) {
+                for (var y = 0; y < height; y++) {
+                    var r = 0,
+                        g = 0,
+                        b = 0,
+                        a = 0,
+                        currentPixId0 = (y * width + x) * 4,
+                        r0 = pixes[currentPixId0],
+                        g0 = pixes[currentPixId0 + 1],
+                        b0 = pixes[currentPixId0 + 2];
+                    //console.log(1);
+
+                    // 计算每个点的高斯处理之后的值
+                    for (var i = -radius; i <= radius; i++) {
+                        // 处理边缘
+                        var m = handleEdge(i, x, width);
+                        for (var j = -radius; j <= radius; j++) {
+                            // 处理边缘
+                            var mm = handleEdge(j, y, height);
+
+                            var currentPixId = (mm * width + m) * 4;
+
+                            var jj = j + radius,
+                                ii = i + radius,
+                                r1 = pixes[currentPixId],
+                                g1 = pixes[currentPixId + 1],
+                                b1 = pixes[currentPixId + 2];
+
+                            var weight = gaussMatrix[jj * gaussEdge + ii] * color_weight[Math.abs(r1 - r0) + Math.abs(g1 - g0) + Math.abs(b1 - b0)];
+                            r += pixes[currentPixId] * weight;
+                            g += pixes[currentPixId + 1] * weight;
+                            b += pixes[currentPixId + 2] * weight;
+                        }
+                    }
+                    var pixId = (y * width + x) * 4;
+
+                    pixes[pixId] = ~~r;
+                    pixes[pixId + 1] = ~~g;
+                    pixes[pixId + 2] = ~~b;
+                }
+            }
+            imgData.data = pixes;
+            return imgData;
+        }
+
+        function handleEdge(i, x, w) {
+            var m = x + i;
+            if (m < 0) {
+                m = -m;
+            } else if (m >= w) {
+                m = w + i - x;
+            }
+            return m;
+        }
+        //二值化
+        function binarization(imgData) {
+            var index = 255 / 2; //阈值
+            for (var i = 0; i < imgData.data.length; i += 4) {
+                var R = imgData.data[i];
+                var G = imgData.data[i + 1];
+                var B = imgData.data[i + 2];
+                var sum = (R + G + B) / 3;
+                if (sum > index) {
+                    imgData.data[i] = 255;
+                    imgData.data[i + 1] = 255;
+                    imgData.data[i + 2] = 255;
+                } else {
+                    imgData.data[i] = 0;
+                    imgData.data[i + 1] = 0;
+                    imgData.data[i + 2] = 0;
+                }
+            }
+            return imgData;
+        }
+        //去色滤镜
+        function removeColor(imageData) {
+            pixelData = imageData.data;
+            for (var i = 0; i < canvas.width * canvas.height; i++) {
+                var r = pixelData[i * 4 + 0],
+                    g = pixelData[i * 4 + 1],
+                    b = pixelData[i * 4 + 2];
+                var c = Math.floor((Math.min(r, g, b) + Math.max(r, g, b)) / 2);
+                pixelData[i * 4 + 0] = c;
+                pixelData[i * 4 + 1] = c;
+                pixelData[i * 4 + 2] = c;
+            }
+            imageData.data = pixelData;
+            return imageData;
+        }
+        //灰度图
+        function greyEffect(imageData) {
+            pixelData = imageData.data;
+            for (var i = 0; i < canvas.width * canvas.height; i++) {
+                var r = pixelData[i * 4 + 0],
+                    g = pixelData[i * 4 + 1],
+                    b = pixelData[i * 4 + 2];
+                var grey = 0.3 * r + 0.59 * g + 0.11 * b;
+                pixelData[i * 4 + 0] = grey;
+                pixelData[i * 4 + 1] = grey;
+                pixelData[i * 4 + 2] = grey;
+            }
+            imageData.data = pixelData;
+            return imageData;
+        }
+        //马赛克
+        function gosike(imgData, size) {
+            pixelData = tmppixelData = imgData.data,
+                size = size || 16;
+            var count = Math.pow((size * 2 + 1), 2);
+            for (var i = 0; i < canvas.height; i += size) {
+                for (var j = 0; j < canvas.width; j += size) {
+                    var totalr = 0,
+                        totalg = 0,
+                        totalb = 0;
+                    for (var dx = 0; dx <= size; dx++) {
+                        for (var dy = 0; dy <= size; dy++) {
+                            var x = i + dx;
+                            var y = j + dy;
+                            var p = x * canvas.width + y;
+                            totalr += tmppixelData[p * 4 + 0];
+                            totalg += tmppixelData[p * 4 + 1];
+                            totalb += tmppixelData[p * 4 + 2];
+                        }
+                    }
+                    var p = i * canvas.width + j;
+                    var avgr = totalr / count;
+                    var avgg = totalg / count;
+                    var avgb = totalb / count;
+                    for (var dx = 0; dx <= size; dx++) {
+                        for (var dy = 0; dy <= size; dy++) {
+                            var x = i + dx;
+                            var y = j + dy;
+                            var p = x * canvas.width + y;
+                            pixelData[p * 4 + 0] = avgr;
+                            pixelData[p * 4 + 1] = avgg;
+                            pixelData[p * 4 + 2] = avgb;
+                        }
+                    }
+                }
+            }
+            imgData.data = pixelData;
+            return imgData;
+        }
+        //最大最小值滤波
+        function maxMin(imgData, size) {
+            pixelData = tmppixelData = imgData.data,
+                size = size || 3;
+            for (var i = 0; i < canvas.height; i++) {
+                for (var j = 0; j < canvas.width; j++) {
+                    var tempR = [],
+                        tempG = [],
+                        tempB = [];
+                    for (var dx = 0; dx < size; dx++) {
+                        for (var dy = 0; dy < size; dy++) {
+                            var x = i + dx;
+                            var y = j + dy;
+                            var p = x * canvas.width + y;
+                            if (!(dx == ~~(size / 2) && dy == ~~(size / 2))) {
+                                tempR.push(tmppixelData[p * 4 + 0])
+                                tempG.push(tmppixelData[p * 4 + 1])
+                                tempB.push(tmppixelData[p * 4 + 2])
+                            }
+                        }
+                    }
+                    tempR.sort();
+                    tempG.sort();
+                    tempB.sort();
+                    var p = i * canvas.width + j;
+                    pixelData[p * 4 + 0] = tmppixelData[p * 4 + 0] > tempR[tempR.length - 1] ? tempR[tempR.length - 1] : tmppixelData[p * 4 + 0] < tempR[0] ? tempR[0] : tmppixelData[p * 4 + 0];
+                    pixelData[p * 4 + 1] = tmppixelData[p * 4 + 1] > tempG[tempG.length - 1] ? tempG[tempG.length - 1] : tmppixelData[p * 4 + 1] < tempG[0] ? tempG[0] : tmppixelData[p * 4 + 1];
+                    pixelData[p * 4 + 2] = tmppixelData[p * 4 + 2] > tempB[tempB.length - 1] ? tempB[tempB.length - 1] : tmppixelData[p * 4 + 2] < tempB[0] ? tempB[0] : tmppixelData[p * 4 + 2];
+                }
+            }
+            imgData.data = pixelData;
+            return imgData;
+        }
+        //中值滤波
+        var medianCounter;
+
+        function median(imgData, size) {
+            if (!medianCounter) medianCounter = 0;
+            pixelData = tmppixelData = imgData.data,
+                size = size || 3;
+            for (var i = 0; i < canvas.height; i++) {
+                for (var j = 0; j < canvas.width; j++) {
+                    var tempR = [],
+                        tempG = [],
+                        tempB = [];
+                    for (var dx = 0; dx < size; dx++) {
+                        for (var dy = 0; dy < size; dy++) {
+                            var x = i + dx;
+                            var y = j + dy;
+                            var p = x * canvas.width + y;
+                            tempR.push(tmppixelData[p * 4 + 0])
+                            tempG.push(tmppixelData[p * 4 + 1])
+                            tempB.push(tmppixelData[p * 4 + 2])
+                        }
+                    }
+                    tempR.sort();
+                    tempG.sort();
+                    tempB.sort();
+                    var index = ~~((size * size) / 2);
+                    var p = i * canvas.width + j;
+                    pixelData[p * 4 + 0] = tempR[index];
+                    pixelData[p * 4 + 1] = tempG[index];
+                    pixelData[p * 4 + 2] = tempB[index];
+                }
+            }
+            imgData.data = pixelData;
+            medianCounter++;
+            //迭代次数
+            if (medianCounter == 1) {
+                return imgData;
+
+            } else {
+                return median(imgData, size)
+            }
+        }
+        //均值滤波
+        function average(imgData, size) {
+            pixelData = tmppixelData = imgData.data,
+                size = size || 3;
+            var count = Math.pow(size, 2);
+            for (var i = 0; i < canvas.height; i++) {
+                for (var j = 0; j < canvas.width; j++) {
+                    var totalr = 0,
+                        totalg = 0,
+                        totalb = 0;
+                    for (var dx = 0; dx < size; dx++) {
+                        for (var dy = 0; dy < size; dy++) {
+                            var x = i + dx;
+                            var y = j + dy;
+                            var p = x * canvas.width + y;
+                            totalr += tmppixelData[p * 4 + 0];
+                            totalg += tmppixelData[p * 4 + 1];
+                            totalb += tmppixelData[p * 4 + 2];
+                        }
+                    }
+
+                    var p = i * canvas.width + j;
+                    var avgr = totalr / count;
+                    var avgg = totalg / count;
+                    var avgb = totalb / count;
+                    pixelData[p * 4 + 0] = avgr;
+                    pixelData[p * 4 + 1] = avgg;
+                    pixelData[p * 4 + 2] = avgb;
+                }
+            }
+            imgData.data = pixelData;
+            return imgData;
+        }
+        /**
+         * 此函数为分别循环
+         */
+        function gaussBlur1(imgData, radius, sigma) {
+            var pixes = imgData.data;
+            var width = imgData.width;
+            var height = imgData.height;
+            var gaussMatrix = [],
+                gaussSum = 0,
+                x, y,
+                r, g, b, a,
+                i, j, k, len;
+
+
+            radius = Math.floor(radius) || 3;
+            sigma = sigma || radius / 3;
+
+            a = 1 / (Math.sqrt(2 * Math.PI) * sigma);
+            b = -1 / (2 * sigma * sigma);
+            //生成高斯矩阵
+            for (i = 0, x = -radius; x <= radius; x++, i++) {
+                g = a * Math.exp(b * x * x);
+                gaussMatrix[i] = g;
+                gaussSum += g;
+
+            }
+            //归一化, 保证高斯矩阵的值在[0,1]之间
+            for (i = 0, len = gaussMatrix.length; i < len; i++) {
+                gaussMatrix[i] /= gaussSum;
+            }
+            //x 方向一维高斯运算
+            for (y = 0; y < height; y++) {
+                for (x = 0; x < width; x++) {
+                    r = g = b = a = 0;
+                    gaussSum = 0;
+                    for (j = -radius; j <= radius; j++) {
+                        k = x + j;
+                        if (k >= 0 && k < width) { //确保 k 没超出 x 的范围
+                            //r,g,b,a 四个一组
+                            i = (y * width + k) * 4;
+                            r += pixes[i] * gaussMatrix[j + radius];
+                            g += pixes[i + 1] * gaussMatrix[j + radius];
+                            b += pixes[i + 2] * gaussMatrix[j + radius];
+                            // a += pixes[i + 3] * gaussMatrix[j];
+                            gaussSum += gaussMatrix[j + radius];
+                        }
+                    }
+                    i = (y * width + x) * 4;
+                    // 除以 gaussSum 是为了消除处于边缘的像素, 高斯运算不足的问题
+                    // console.log(gaussSum)
+                    pixes[i] = r / gaussSum;
+                    pixes[i + 1] = g / gaussSum;
+                    pixes[i + 2] = b / gaussSum;
+                    // pixes[i + 3] = a ;
+                }
+            }
+            //y 方向一维高斯运算
+            for (x = 0; x < width; x++) {
+                for (y = 0; y < height; y++) {
+                    r = g = b = a = 0;
+                    gaussSum = 0;
+                    for (j = -radius; j <= radius; j++) {
+                        k = y + j;
+                        if (k >= 0 && k < height) { //确保 k 没超出 y 的范围
+                            i = (k * width + x) * 4;
+
+                            r += pixes[i] * gaussMatrix[j + radius];
+                            g += pixes[i + 1] * gaussMatrix[j + radius];
+                            b += pixes[i + 2] * gaussMatrix[j + radius];
+                            // a += pixes[i + 3] * gaussMatrix[j];
+                            gaussSum += gaussMatrix[j + radius];
+                        }
+                    }
+                    i = (y * width + x) * 4;
+                    pixes[i] = r / gaussSum;
+                    pixes[i + 1] = g / gaussSum;
+                    pixes[i + 2] = b / gaussSum;
+                    // pixes[i] = r ;
+                    // pixes[i + 1] = g ;
+                    // pixes[i + 2] = b ;
+                    // pixes[i + 3] = a ;
+                }
+            }
+            //end
+            imgData.data = pixes;
+            return imgData;
+        }
+    </script>
+</body>
+
+</html>
