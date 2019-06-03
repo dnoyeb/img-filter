@@ -3,11 +3,11 @@
 
 <head lang="en">
     <meta charset="UTF-8">
-    <title>test</title>
+    <title>JS图像滤波</title>
 </head>
 
 <body>
-    <img src="test.png" alt="img source" id="imgSource">
+    <img src="test.jpg" alt="img source" id="imgSource">
     <canvas id="canvas"></canvas>
     <script>
         window.onload = function() {
@@ -30,18 +30,175 @@
 
                 // 开始
                 var startTime = +new Date();
-                var tempData = BBcolor(canvasData, 10, 1, 300);
-                // var tempData = removeColor(canvasData);
-
-
+                // var tempData = BBcolor(canvasData, 20, 4, 20);
+                // var tempData = moir(canvasData, 20);
+                // 在指定地点产生波源
+                // var tempData = Ripple(canvasData, 20);
+                var tempData = surface(canvasData, 5, 20);
                 context.putImageData(tempData, 0, 0);
 
                 var endTime = +new Date();
                 console.log(" 一共经历时间：" + (endTime - startTime) + "ms");
             }
-            /**
-             * 双边滤波
-             */
+            /*
+                表面滤波
+            */
+        function surface(imgData, radius, threshold) {
+            var width = imgData.width,
+                height = imgData.height,
+                pixelData = tempData = imgData.data;
+            for (var i = 0; i < height; i++) {
+                for (var j = 0; j < width; j++) {
+                    pos = (i * width + j) * 4;
+                    sumr = sumrw = sumg = sumgw = sumb = sumbw = 0;
+                    for (var n = -radius; n <= radius; n++) {
+                        for (var m = -radius; m <= radius; m++) {
+                            var x = CLIP3(i + n, 0, height - 1);
+                            var y = CLIP3(j + m, 0, width - 1);
+                            pos0 = (x * width + y) * 4;
+                            k = 1.0 - Math.abs(tempData[pos0] - tempData[pos]) / (2.5 * threshold);
+                            sumr += k * tempData[pos0];
+                            sumrw += k;
+
+                            k = 1.0 - Math.abs(tempData[pos0 + 1] - tempData[pos + 1]) / (2.5 * threshold);
+                            sumg += k * tempData[pos0 + 1];
+                            sumgw += k;
+
+                            k = 1.0 - Math.abs(tempData[pos0 + 2] - tempData[pos + 2]) / (2.5 * threshold);
+                            sumb += k * tempData[pos0 + 2];
+                            sumbw += k;
+                        }
+                    }
+                    pixelData[pos] = CLIP2((sumr / sumrw) >> 0, pixelData[pos]);
+                    pixelData[pos + 1] = CLIP2((sumg / sumgw) >> 0, pixelData[pos + 1]);
+                    pixelData[pos + 2] = CLIP2((sumb / sumbw) >> 0, pixelData[pos + 2]);
+                }
+            }
+
+            function CLIP2(a, b) {
+                if (a < 0 || a > 255) {
+                    return b
+                } else {
+                    return a
+                }
+            }
+
+            function CLIP3(a, b, c) {
+                return Math.min(Math.max(a, b), c)
+            }
+            imgData.data = pixelData;
+            return imgData;
+        }
+        /*
+        水波纹
+        */
+        function Ripple(imgData) {
+            var width = imgData.width,
+                height = imgData.height,
+                pixelData = imgData.data,
+                Center_X = height / 4,
+                Center_Y = width / 4,
+                wavelength = 20,
+                phase = 100,
+                amplitude = 3,
+                radius = Math.min(height, width) / 2,
+                radius2 = radius * radius;
+            for (var i = 1; i < height; i++) {
+                for (j = 1; j < width; j++) {
+                    dx = i - Center_X;
+                    dy = j - Center_Y;
+                    distance2 = dx * dx + dy * dy;
+                    if (distance2 > radius2) {
+                        x = i;
+                        y = j;
+                    } else {
+                        distance = Math.sqrt(distance2);
+                        amount = amplitude * Math.sin(distance / wavelength * 2 * Math.PI - phase);
+                        amount = amount * (radius - distance) / radius;
+                        amount = amount * wavelength / (distance + 0.0001);
+
+                        x = i + dx * amount;
+                        y = j + dy * amount;
+                    }
+                    if (x > 1 && x < width && y < height && y > 1) {
+                        x1 = Math.floor(x);
+                        y1 = Math.floor(y);
+                        p = x - x1;
+                        q = y - y1;
+                        var r0 = for_img(x1, y1, p, q, 0);
+                        var g0 = for_img(x1, y1, p, q, 1);
+                        var b0 = for_img(x1, y1, p, q, 2);
+                        var p = i * canvas.width + j;
+                        pixelData[p * 4 + 0] = r0;
+                        pixelData[p * 4 + 1] = g0;
+                        pixelData[p * 4 + 2] = b0;
+                    }
+                }
+            }
+
+            function for_img(x, y, p, q, n) {
+                return pixelData[(x * width + y) * 4 + n] * (1 - p) * (1 - q) + pixelData[(x * width + y + 1) * 4 + n] * p * (1 - q) + pixelData[((x + 1) * width + y) * 4 + n] * q * (1 - p) + pixelData[((x + 1) * width + y + 1) * 4 + n] * p * q
+            }
+
+
+            imgData.data = pixelData;
+            return imgData;
+        }
+        /*
+            摩尔纹
+        */
+        function moir(imgData, Degree) {
+            var width = imgData.width,
+                height = imgData.height,
+                pixelData = imgData.data,
+                Center_X = (width + 1) / 2,
+                Center_Y = (height + 1) / 2,
+                Degree = Degree || 20,
+                beta;
+
+            for (var i = 1; i < height; i++) {
+                for (j = 1; j < width; j++) {
+                    x0 = j - Center_X;
+                    y0 = Center_Y - i;
+                    if (x0 != 0) {
+                        beta = Math.atan(y0 / x0);
+                    }
+                    if (x0 < 0) {
+                        beta = beta + Math.PI;
+                    } else {
+                        beta = Math.PI / 2;
+                    }
+                    var radius = Math.sqrt(x0 * x0 + y0 * y0);
+                    beta = beta + radius * Degree;
+                    x = radius * Math.sin(beta);
+                    y = radius * Math.cos(beta);
+                    if (x > 1 && x < width && y < height && y > 1) {
+                        x1 = Math.floor(x);
+                        y1 = Math.floor(y);
+                        p = x - x1;
+                        q = y - y1;
+                        var r0 = for_img(x1, y1, p, q, 0);
+                        var g0 = for_img(x1, y1, p, q, 1);
+                        var b0 = for_img(x1, y1, p, q, 2);
+                        var p = i * canvas.width + j;
+                        pixelData[p * 4 + 0] = r0;
+                        pixelData[p * 4 + 1] = g0;
+                        pixelData[p * 4 + 2] = b0;
+                    }
+                }
+            }
+
+            function for_img(x, y, p, q, n) {
+                return pixelData[(x * width + y) * 4 + n] * (1 - p) * (1 - q) + pixelData[(x * width + y + 1) * 4 + n] * p * (1 - q) + pixelData[((x + 1) * width + y) * 4 + n] * q * (1 - p) + pixelData[((x + 1) * width + y + 1) * 4 + n] * p * q
+            }
+            imgData.data = pixelData;
+            return imgData;
+
+        }
+
+        /**
+         * 双边滤波
+         */
         function BBcolor(imgData, radius, sigma, sigma_color, channels) {
             var pixes = imgData.data,
                 width = imgData.width,
@@ -68,28 +225,21 @@
                 for (var j = -radius; j <= radius; j++) {
                     var gxy = a * Math.exp((i * i + j * j) * b);
                     gaussMatrix.push(gxy);
-                    gaussSum += gxy; // 得到高斯矩阵的和，用来归一化
+                    // gaussSum += gxy; // 得到高斯矩阵的和，用来归一化
                 }
             }
-            var gaussNum = (radius + 1) * (radius + 1);
-            for (var i = 0; i < gaussNum; i++) {
-                gaussMatrix[i] = gaussMatrix[i] / gaussSum; // 除gaussSum是归一化
-            }
-
-            //console.log(gaussMatrix);
             // 循环计算整个图像每个像素高斯处理之后的值
             for (var x = 0; x < width; x++) {
                 for (var y = 0; y < height; y++) {
                     var r = 0,
                         g = 0,
                         b = 0,
-                        a = 0,
+                        wsum = 0,
                         currentPixId0 = (y * width + x) * 4,
                         r0 = pixes[currentPixId0],
                         g0 = pixes[currentPixId0 + 1],
                         b0 = pixes[currentPixId0 + 2];
                     //console.log(1);
-
                     // 计算每个点的高斯处理之后的值
                     for (var i = -radius; i <= radius; i++) {
                         // 处理边缘
@@ -110,13 +260,14 @@
                             r += pixes[currentPixId] * weight;
                             g += pixes[currentPixId + 1] * weight;
                             b += pixes[currentPixId + 2] * weight;
+                            wsum += weight;
                         }
                     }
+                    wsum = 1 / wsum;
                     var pixId = (y * width + x) * 4;
-
-                    pixes[pixId] = ~~r;
-                    pixes[pixId + 1] = ~~g;
-                    pixes[pixId + 2] = ~~b;
+                    pixes[pixId] = ~~(wsum * r);
+                    pixes[pixId + 1] = ~~(wsum * g);
+                    pixes[pixId + 2] = ~~(wsum * b);
                 }
             }
             imgData.data = pixes;
